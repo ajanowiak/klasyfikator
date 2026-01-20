@@ -18,7 +18,7 @@ def compose_windows(tissue, windows=["06-08", "10-12", "14-16"]):
 
     composite = pd.Categorical(list(zip(X_new['window'], y_new))).codes
     num_values = len(pd.Series(composite).unique())
-    print(f"Created a composite vector with {num_values} distinct values")
+    # print(f"Created a composite vector with {num_values} distinct values")
 
     X_new.drop('window', axis=1, inplace=True) # we don't want to use 'window' for prediction
 
