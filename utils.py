@@ -24,6 +24,28 @@ def compose_windows(tissue, windows=["06-08", "10-12", "14-16"]):
 
     return X_new, y_new, composite
 
+def make_names_dict():
+    # FIXME: move this to some kind of config
+    """
+    Dictionary for f-string construction in model paths and in text on plots
+    """
+    model_names = ['RandomForestClassifier', 'SVC', 'LogisticRegression', 'XGBClassifier']
+    model_names_dict = {name:{'full':'', 'short':''} for name in model_names}
+
+    model_names_dict['RandomForestClassifier']['full'] = 'Random Forest'
+    model_names_dict['RandomForestClassifier']['short'] = 'RF'
+
+    model_names_dict['SVC']['full'] = 'Support Vector Machine'
+    model_names_dict['SVC']['short'] = 'SVM'
+
+    model_names_dict['LogisticRegression']['full'] = 'Logistic Regression'
+    model_names_dict['LogisticRegression']['short'] = 'LR'
+
+    model_names_dict['XGBClassifier']['full'] = 'XGBoost'
+    model_names_dict['XGBClassifier']['short'] = 'XGB'
+
+    return model_names_dict
+
 def main():
     print("Utilities module :P - this is for imports only")
 
