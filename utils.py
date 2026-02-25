@@ -92,6 +92,35 @@ def load_window(window: str):
     
     return loops_df, motifs_df
 
+def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
+    """
+    Returns whole z-score distributions for all activity profiles (lists of values)
+    Args:
+        loop_ids (list[str]): Loop indentifiers (like 'L417')
+        motif_ids (list[str]): motif indentifiers (like 'M0111-1.02')
+        loops_df, motifs_df (pd.DataFrame): dataframes loaded by load_window()
+
+    Returns:
+        result (dict): a dictionary with 
+    """
+    result = {loop: {motif: {"1-1": [], "1-0": [], "0-1": [], "0-0": []} for motif in motif_ids} for loop in loop_ids}
+    for loop_id in loop_ids:
+        loop_values = loops_df.loc[loop_id]
+        cells_11 = loop_values[loop_values == 11].index
+        cells_10 = loop_values[loop_values == 10].index
+        cells_01 = loop_values[loop_values == 1].index
+        cells_00 = loop_values[loop_values == 0].index
+
+        for motif_id in motif_ids:
+            motif_values = motifs_df.loc[motif_id]
+
+            result[loop_id][motif_id]["1-1"] = motif_values.loc[cells_11] if len(cells_11) > 0 else np.nan
+            result[loop_id][motif_id]["1-0"] = motif_values.loc[cells_10] if len(cells_10) > 0 else np.nan
+            result[loop_id][motif_id]["0-1"] = motif_values.loc[cells_01] if len(cells_01) > 0 else np.nan
+            result[loop_id][motif_id]["0-0"] = motif_values.loc[cells_00] if len(cells_00) > 0 else np.nan
+            
+    return result
+
 def difference_of_means(loop_id: str, loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> tuple[str, dict]:
     # niech to po prostu zwraca różnicę
     """
