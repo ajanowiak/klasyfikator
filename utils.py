@@ -61,7 +61,6 @@ def make_names_dict():
 
 ###     MOTIF ENRICHEMENT DATA PREPARATION
 
-
 def load_window(window: str):
     """ 
     Load and clean data (drop missing values while preserving loop and motif labels).
@@ -85,6 +84,89 @@ def load_window(window: str):
     motifs_df = motifs_df.apply(pd.to_numeric, errors='coerce')
     motifs_df.dropna(axis=1, inplace=True) 
     
+    # Keep only common cells (columns)
+    common = list(set(loops_df.columns) & set(motifs_df.columns))
+    loops_df = loops_df[common]
+    motifs_df = motifs_df[common]
+    
+    return loops_df, motifs_df
+
+def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
+    """
+    Returns whole z-score distributions for all activity profiles (lists of values)
+    Args:
+        loop_ids (list[str]): Loop indentifiers (like 'L417')
+        motif_ids (list[str]): motif indentifiers (like 'M0111-1.02')
+        loops_df, motifs_df (pd.DataFrame): dataframes loaded by load_window()
+
+    Returns:
+        result (dict): a dictionary with 
+    """
+    result = {loop: {motif: {"1-1": [], "1-0": [], "0-1": [], "0-0": []} for motif in motif_ids} for loop in loop_ids}
+    for loop_id in loop_ids:
+        loop_values = loops_df.loc[loop_id]
+        cells_11 = loop_values[loop_values == 11].index
+        cells_10 = loop_values[loop_values == 10].index
+        cells_01 = loop_values[loop_values == 1].index
+        cells_00 = loop_values[loop_values == 0].index
+
+        for motif_id in motif_ids:
+            motif_values = motifs_df.loc[motif_id]
+
+            result[loop_id][motif_id]["1-1"] = motif_values.loc[cells_11] if len(cells_11) > 0 else np.nan
+            result[loop_id][motif_id]["1-0"] = motif_values.loc[cells_10] if len(cells_10) > 0 else np.nan
+            result[loop_id][motif_id]["0-1"] = motif_values.loc[cells_01] if len(cells_01) > 0 else np.nan
+            result[loop_id][motif_id]["0-0"] = motif_values.loc[cells_00] if len(cells_00) > 0 else np.nan
+            
+    return result
+
+
+def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame = None):
+    """ 
+    Load and clean data (drop missing values while preserving loop and motif labels).
+
+    Args:
+        window (str): timepoint to process (eg. 'hrs06-08')
+
+    Returns:
+        Two cleaned DataFrames: loops_df, motifs_df (with labels as index/columns)
+    """
+    neural_labels = [
+        "Brain", "Neural", "Ventral_nerve_cord",
+        "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
+    ]
+
+    neural_cells = set(
+        metadata_df.index[
+            metadata_df["refined_annotation"].isin(neural_labels)
+        ]
+    )
+
+    def column_filter(col):
+        return col == 0 or col in neural_cells  # keep index column
+    
+    loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
+    motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
+
+    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t\t Loading data...\n")
+    loops_df = pd.read_csv(
+        loops_path,
+        sep='\t',
+        index_col=0,
+        usecols=column_filter
+    )
+
+    motifs_df = pd.read_csv(
+        motifs_path,
+        sep='\t',
+        index_col=0,
+        usecols=column_filter
+    )
+
+    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t\t Converting DataFrames to numeric and dropping NaN values...\n")
+    loops_df = loops_df.apply(pd.to_numeric, errors='coerce').dropna(axis=1)
+    motifs_df = motifs_df.apply(pd.to_numeric, errors='coerce').dropna(axis=1)
+
     # Keep only common cells (columns)
     common = list(set(loops_df.columns) & set(motifs_df.columns))
     loops_df = loops_df[common]
