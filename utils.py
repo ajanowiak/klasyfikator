@@ -120,17 +120,8 @@ def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFr
             
     return result
 
+def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame):
 
-def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame = None):
-    """ 
-    Load and clean data (drop missing values while preserving loop and motif labels).
-
-    Args:
-        window (str): timepoint to process (eg. 'hrs06-08')
-
-    Returns:
-        Two cleaned DataFrames: loops_df, motifs_df (with labels as index/columns)
-    """
     neural_labels = [
         "Brain", "Neural", "Ventral_nerve_cord",
         "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
@@ -142,36 +133,44 @@ def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame = No
         ]
     )
 
-    def column_filter(col):
-        return col == 0 or col in neural_cells  # keep index column
-    
     loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
     motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
 
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t\t Loading data...\n")
+    # ---- Read header only (VERY fast)
+    loops_cols = pd.read_csv(loops_path, sep="\t", nrows=0).columns
+    motifs_cols = pd.read_csv(motifs_path, sep="\t", nrows=0).columns
+
+    # First column name (index column)
+    loops_index_col = loops_cols[0]
+    motifs_index_col = motifs_cols[0]
+
+    # Keep only neural cells + index column
+    loops_usecols = [loops_index_col] + [
+        c for c in loops_cols[1:] if c in neural_cells
+    ]
+
+    motifs_usecols = [motifs_index_col] + [
+        c for c in motifs_cols[1:] if c in neural_cells
+    ]
+
+    # ---- Now read only selected columns
     loops_df = pd.read_csv(
         loops_path,
-        sep='\t',
+        sep="\t",
         index_col=0,
-        usecols=column_filter
+        usecols=loops_usecols
     )
 
     motifs_df = pd.read_csv(
         motifs_path,
-        sep='\t',
+        sep="\t",
         index_col=0,
-        usecols=column_filter
+        usecols=motifs_usecols
     )
 
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t\t Converting DataFrames to numeric and dropping NaN values...\n")
-    loops_df = loops_df.apply(pd.to_numeric, errors='coerce').dropna(axis=1)
-    motifs_df = motifs_df.apply(pd.to_numeric, errors='coerce').dropna(axis=1)
+    loops_df = loops_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
+    motifs_df = motifs_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
 
-    # Keep only common cells (columns)
-    common = list(set(loops_df.columns) & set(motifs_df.columns))
-    loops_df = loops_df[common]
-    motifs_df = motifs_df[common]
-    
     return loops_df, motifs_df
 
 def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
