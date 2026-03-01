@@ -122,6 +122,9 @@ def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFr
 
 def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame):
 
+
+
+    
     neural_labels = [
         "Brain", "Neural", "Ventral_nerve_cord",
         "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
@@ -133,44 +136,36 @@ def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame):
         ]
     )
 
+    
     loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
     motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
-
+    
     # ---- Read header only (VERY fast)
     loops_cols = pd.read_csv(loops_path, sep="\t", nrows=0).columns
     motifs_cols = pd.read_csv(motifs_path, sep="\t", nrows=0).columns
-
-    # First column name (index column)
-    loops_index_col = loops_cols[0]
-    motifs_index_col = motifs_cols[0]
-
-    # Keep only neural cells + index column
-    loops_usecols = [loops_index_col] + [
-        c for c in loops_cols[1:] if c in neural_cells
-    ]
-
-    motifs_usecols = [motifs_index_col] + [
-        c for c in motifs_cols[1:] if c in neural_cells
-    ]
-
+    
+    usecols = [loops_cols[0]] + [c for c in loops_cols if c in neural_cells]
+    
     # ---- Now read only selected columns
     loops_df = pd.read_csv(
         loops_path,
         sep="\t",
         index_col=0,
-        usecols=loops_usecols
+        usecols=usecols
     )
-
+    
     motifs_df = pd.read_csv(
         motifs_path,
         sep="\t",
         index_col=0,
-        usecols=motifs_usecols
+        usecols=usecols
     )
-
     loops_df = loops_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
     motifs_df = motifs_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
 
+    loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
+    motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
+    
     return loops_df, motifs_df
 
 def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
