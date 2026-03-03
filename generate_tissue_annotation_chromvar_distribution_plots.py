@@ -234,6 +234,7 @@ def main():
     curr_plotting_dict = big_dict_stratified
 
     for loop_id in loop_ids:
+        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Creating plots for {loop_id}")
         for motif_id in motif_ids:
             motif_name = motif_lookup[motif_lookup["id"] == motif_id]["name"]
             motif_name = str(list(motif_name)[0])
