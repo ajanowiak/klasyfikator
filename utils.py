@@ -120,53 +120,50 @@ def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFr
             
     return result
 
-def load_window_and_filter_by_tissue(window: str, metadata_df: pd.DataFrame):
 
-
-
-    
-    neural_labels = [
-        "Brain", "Neural", "Ventral_nerve_cord",
-        "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
-    ]
-
-    neural_cells = set(
-        metadata_df.index[
-            metadata_df["refined_annotation"].isin(neural_labels)
-        ]
-    )
-
-    
+def load_window_split_by_tissue(window: str, metadata_df: pd.DataFrame):
+    """
+    returns a dictionary of dataframes
+    """
     loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
     motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
-    
-    # ---- Read header only (VERY fast)
-    loops_cols = pd.read_csv(loops_path, sep="\t", nrows=0).columns
-    motifs_cols = pd.read_csv(motifs_path, sep="\t", nrows=0).columns
-    
-    usecols = [loops_cols[0]] + [c for c in loops_cols if c in neural_cells]
-    
-    # ---- Now read only selected columns
-    loops_df = pd.read_csv(
-        loops_path,
-        sep="\t",
-        index_col=0,
-        usecols=usecols
-    )
-    
-    motifs_df = pd.read_csv(
-        motifs_path,
-        sep="\t",
-        index_col=0,
-        usecols=usecols
-    )
+
+    loops_df = pd.read_csv(loops_path, sep="\t", index_col=0)
+    motifs_df = pd.read_csv(motifs_path, sep="\t", index_col=0)
+
+    # numeric cleanup
     loops_df = loops_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
     motifs_df = motifs_df.apply(pd.to_numeric, errors="coerce").dropna(axis=1)
 
-    loops_path = f"data/new_time/hrs{window}_NNv1_time_matrix_loops.tsv"
-    motifs_path = f"data/new_time/hrs{window}_NNv1_time_matrix_motifs.tsv"
-    
-    return loops_df, motifs_df
+    # align once
+    common_cells = loops_df.columns.intersection(motifs_df.columns)
+    loops_df = loops_df[common_cells]
+    motifs_df = motifs_df[common_cells]
+
+    assert loops_df.columns.equals(motifs_df.columns), "Loops_df and motifs_df have different columns (or the same columns in different order). This will interfere with downstream masking of the dataframes."
+
+    # group cells by tissue
+    grouped = {}
+    for label, submeta in metadata_df.groupby("refined_annotation"):
+        cells = submeta.index.intersection(common_cells)
+        if len(cells) > 0:
+            grouped[label] = (
+                loops_df[cells],
+                motifs_df[cells]
+            )
+
+    return grouped
+
+# neural_labels = [
+#     "Brain", "Neural", "Ventral_nerve_cord",
+#     "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
+# ]
+
+# neural_cells = set(
+#     metadata_df.index[
+#         metadata_df["refined_annotation"].isin(neural_labels)
+#     ]
+# )
 
 def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
     """
