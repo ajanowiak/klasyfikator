@@ -83,5 +83,5 @@ def main():
 
     print("All tables saved.")
 
-if __name__ == "__main()":
+if __name__ == "__main__":
     main()
