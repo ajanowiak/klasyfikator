@@ -24,8 +24,9 @@ def main():
     atac_meta = pyreadr.read_r('data/atac_meta.rds') # also works for RData
     anot_df = list(atac_meta.values())[0]
 
-    # print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Reading the motif lookup table...")
-    # motif_lookup = pd.read_csv("data/motif_names.tsv", sep="\t")
+    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Reading the motif lookup table...")
+    motif_lookup = pd.read_csv("data/motif_names.tsv", sep="\t")
+    motif_name_map = dict(zip(motif_lookup["id"], motif_lookup["name"]))
 
     for window in windows[::-1]:
         print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t Computing distributions for window {window}\n")
@@ -54,9 +55,13 @@ def main():
         tissues = big_dict_stratified[window].keys()
 
         for loop in loop_ids:
+            columns = pd.MultiIndex.from_tuples(
+                [(m, motif_name_map.get(m, "NA")) for m in motif_ids],
+                names=["motif_id", "motif_name"]
+            )
 
             # Prepare table: rows = tissues, cols = motifs
-            table = pd.DataFrame(index=list(tissues), columns=motif_ids, dtype=float)
+            table = pd.DataFrame(index=list(tissues), columns=columns, dtype=float)
 
             for tissue in tissues:
 
