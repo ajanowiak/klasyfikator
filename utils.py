@@ -10,6 +10,9 @@ import datetime
 from scipy.stats import wasserstein_distance
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+def print_timestamp(message):
+    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}")
+
 ###     MODEL TRAINING UTILS
 def compose_windows(tissue, windows=["06-08", "10-12", "14-16"]):
     """

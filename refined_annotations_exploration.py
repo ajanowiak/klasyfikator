@@ -20,17 +20,18 @@ def main():
     # firstly, the distributions need to be computed
     big_dict_stratified = {w: {} for w in windows}
 
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Reading metadata (tissue annotations)...")
+    print_timestamp("Reading metadata (tissue annotations)...")
     atac_meta = pyreadr.read_r('data/atac_meta.rds') # also works for RData
     anot_df = list(atac_meta.values())[0]
 
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Reading the motif lookup table...")
+
+    print_timestamp("Reading the motif lookup table...")
     motif_lookup = pd.read_csv("data/motif_names.tsv", sep="\t")
     motif_name_map = dict(zip(motif_lookup["id"], motif_lookup["name"]))
 
     for window in windows[::-1]:
-        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t Computing distributions for window {window}\n")
-
+        print_timestamp(f"\t Computing distributions for window {window}\n")
+        
         tissue_dict = load_window_split_by_tissue(
             window=window,
             metadata_df=anot_df
