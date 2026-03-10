@@ -32,7 +32,7 @@ NEURAL_LABELS_RAW = [
 NEURAL_LABELS = list(map(lambda s: s.replace("prim", "prim.").replace("_", " "), NEURAL_LABELS_RAW))
 
 
-def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_labels = False) -> None:
+def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_labels: bool) -> None:
     """
     For a single time window:
       - load data split by tissue
@@ -45,10 +45,13 @@ def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_lab
     print_timestamp(f"Window {window}: loading tissue-split data...")
     tissue_dict = load_window_split_by_tissue(window=window, metadata_df=anot_df)
 
-    valid_labels = [l for l in NEURAL_LABELS if l in tissue_dict]
-    if not valid_labels:
-        print_timestamp(f"Window {window}: no valid neural labels found, skipping.")
-        return
+    if filter_labels:
+        valid_labels = [l for l in NEURAL_LABELS if l in tissue_dict]
+        if not valid_labels:
+            print_timestamp(f"Window {window}: no valid neural labels found, skipping.")
+            return
+    else:
+        valid_labels = list(tissue_dict.keys())
 
     # Retrieve index labels from the first valid tissue
     first_loops_df, first_motifs_df = tissue_dict[valid_labels[0]]
