@@ -102,12 +102,19 @@ def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_lab
     
     os.makedirs(output_dir, exist_ok=True)
 
-    # Also save the full matrix for convenience
+    # Save the enrichment matrix
     full_table = pd.DataFrame(enrichment_matrix, index=loop_ids, columns=motif_ids, dtype=float)
     full_path = os.path.join(output_dir, f"motif_enrichment_hrs{window}.csv")
     full_table.to_csv(full_path)
-
     print_timestamp(f"Window {window}: saved enrichment matrix to {full_path}")
+
+    # Save the 1-1 cell counts matrix (same shape as enrichment table)
+    # count_11[i] is the number of 1-1 cells for loop i, identical across all motifs
+    count_11_matrix = np.broadcast_to(count_11[:, None], (n_loops, n_motifs))
+    count_table = pd.DataFrame(count_11_matrix, index=loop_ids, columns=motif_ids, dtype=np.int64)
+    count_path = os.path.join(output_dir, f"count11_hrs{window}.csv")
+    count_table.to_csv(count_path)
+    print_timestamp(f"Window {window}: saved 1-1 cell counts matrix to {count_path}")
 
 
 def main():
