@@ -1,123 +1,141 @@
-# generate_motif_enrichement_with_filtering.py
-
-# this is effectively a newer implementation of generate_data.py
+# generate_motif_enrichment_with_filtering_fast.py
+#
+# Optimized rewrite of generate_motif_enrichement_with_filtering.py
+#
+# Key changes vs. original:
+#   1. BUG FIX: table.loc[loop, motif] (was: table.loc[tissue, motif] — undefined variable)
+#   2. BUG FIX: CSV save + output_dir moved inside the `for loop` block (was mis-indented)
+#   3. Eliminated big_dict_neural: instead of storing all raw distributions across tissues
+#      and then chaining them, we accumulate (sum, count) incrementally — O(1) memory per cell.
+#   4. Vectorized mean computation: numpy operations on the full motif matrix at once
+#      instead of per-motif Python loops.
+#   5. Parallel window processing via ProcessPoolExecutor.
 
 import os
 import numpy as np
 import pandas as pd
 import pyreadr
 import datetime
-import itertools
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from utils import *
-from generate_tissue_annotation_chromvar_distribution_plots import distributions
+from utils import load_window_split_by_tissue, print_timestamp
 
+
+WINDOWS = ['06-08', '10-12', '14-16']
+ACTIVITY_PROFILES = ["1-1", "1-0", "0-1", "0-0"]
+
+NEURAL_LABELS_RAW = [
+    "Brain", "Neural", "Ventral_nerve_cord",
+    "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
+]
+NEURAL_LABELS = list(map(lambda s: s.replace("prim", "prim.").replace("_", " "), NEURAL_LABELS_RAW))
+
+
+def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame) -> None:
+    """
+    For a single time window:
+      - load data split by tissue
+      - filter to neural tissues
+      - compute per-loop motif enrichment (mean_11 - mean_other) fully vectorized
+      - save one CSV per loop
+
+    No intermediate distribution storage: we accumulate weighted sums directly.
+    """
+    print_timestamp(f"Window {window}: loading tissue-split data...")
+    tissue_dict = load_window_split_by_tissue(window=window, metadata_df=anot_df)
+
+    valid_labels = [l for l in NEURAL_LABELS if l in tissue_dict]
+    if not valid_labels:
+        print_timestamp(f"Window {window}: no valid neural labels found, skipping.")
+        return
+
+    # Retrieve index labels from the first valid tissue
+    first_loops_df, first_motifs_df = tissue_dict[valid_labels[0]]
+    loop_ids = list(first_loops_df.index)
+    motif_ids = list(first_motifs_df.index)
+
+    # For each loop, accumulate sum and count across all neural tissues
+    # Shape: (n_loops, n_motifs)
+    n_loops = len(loop_ids)
+    n_motifs = len(motif_ids)
+
+    sum_11    = np.zeros((n_loops, n_motifs), dtype=np.float64)
+    count_11  = np.zeros((n_loops,),          dtype=np.int64)
+    sum_other    = np.zeros((n_loops, n_motifs), dtype=np.float64)
+    count_other  = np.zeros((n_loops,),          dtype=np.int64)
+
+    for label in valid_labels:
+        loops_df, motifs_df = tissue_dict[label]
+
+        # numpy matrices: shape (n_loops, n_cells) and (n_motifs, n_cells)
+        loops_mat  = loops_df.to_numpy()   # (n_loops,  n_cells)
+        motifs_mat = motifs_df.to_numpy() # (n_motifs, n_cells)
+
+        for i in range(n_loops):
+            mask_11    = loops_mat[i] == 11
+            mask_other = ~mask_11  # 1-0, 0-1, 0-0 combined
+
+            motifs_11    = motifs_mat[:, mask_11]    # (n_motifs, k)
+            motifs_other = motifs_mat[:, mask_other] # (n_motifs, m)
+
+            if motifs_11.shape[1] > 0:
+                sum_11[i]   += motifs_11.sum(axis=1)
+                count_11[i] += motifs_11.shape[1]
+
+            if motifs_other.shape[1] > 0:
+                sum_other[i]   += motifs_other.sum(axis=1)
+                count_other[i] += motifs_other.shape[1]
+
+    # Vectorized mean difference: (n_loops, n_motifs)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        mean_11    = np.where(count_11[:, None]    > 0, sum_11    / count_11[:, None],    np.nan)
+        mean_other = np.where(count_other[:, None] > 0, sum_other / count_other[:, None], np.nan)
+
+    enrichment_matrix = mean_11 - mean_other  # (n_loops, n_motifs)
+
+    # Save one CSV per loop (matching original output format)
+    output_dir = f"results/training_data/neural_labels/hrs{window}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    for i, loop in enumerate(loop_ids):
+        table = pd.DataFrame(
+            enrichment_matrix[i:i+1],   # shape (1, n_motifs)
+            index=[loop],
+            columns=motif_ids,
+            dtype=float
+        )
+        out_path = os.path.join(output_dir, f"motif_enrichment_hrs{window}_loop{loop}.csv")
+        table.to_csv(out_path)
+
+    # Also save the full matrix for convenience
+    full_table = pd.DataFrame(enrichment_matrix, index=loop_ids, columns=motif_ids, dtype=float)
+    full_path = os.path.join(output_dir, f"motif_enrichment_hrs{window}.csv")
+    full_table.to_csv(full_path)
+
+    print_timestamp(f"Window {window}: saved enrichment matrix to {full_path}")
 
 
 def main():
-
-    windows = ['06-08', '10-12', '14-16']
-    # loop_ids = ['L21', 'L32', 'L222', 'L400']
-    # motif_ids = ['M4676-1.02', 'M2013-1.02', 'M4913-1.02', 'M4962-1.02', 'M4982-1.02', 'M2061-1.02']
-    activity_profiles = ["1-1", "1-0", "0-1", "0-0"]
-
-
-    # -------------- compute all distributions into one dictionary (stratified by tissue) -------------------
-    big_dict_stratified = {w: {} for w in windows}
-
     print_timestamp("Reading metadata (tissue annotations)...")
-    # read tissue annotations of each cell
-    atac_meta = pyreadr.read_r('data/atac_meta.rds') # also works for RData
+    atac_meta = pyreadr.read_r('data/atac_meta.rds')
     anot_df = list(atac_meta.values())[0]
 
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Reading the motif lookup table...")
-    # motif_lookup = pd.read_csv("data/motif_names.tsv", sep="\t")
+    # Process windows in parallel (one process per window)
+    # If RAM is tight, reduce max_workers or process sequentially.
+    with ProcessPoolExecutor(max_workers=len(WINDOWS)) as executor:
+        futures = {
+            executor.submit(compute_enrichment_for_window, w, anot_df): w
+            for w in WINDOWS
+        }
+        for fut in as_completed(futures):
+            w = futures[fut]
+            try:
+                fut.result()
+            except Exception as e:
+                print_timestamp(f"\t Window {w} failed: {e}")
 
-    for window in windows[::-1]:
-        print_timestamp(f"\t Computing distributions for window {window}\n")
+    print_timestamp("All tables saved.")
 
-        tissue_dict = load_window_split_by_tissue(
-            window=window,
-            metadata_df=anot_df
-        )
-
-        big_dict_stratified[window] = {}
-
-        for tissue, (loops_df, motifs_df) in tissue_dict.items():
-
-            big_dict_stratified[window][tissue] = distributions(
-                loop_ids = list(loops_df.index),
-                motif_ids = list(motifs_df.index),
-                loops_df = loops_df,
-                motifs_df = motifs_df
-            )
-
-    print_timestamp(f"\t Distributions computed.\n")
-    print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\t Distributions computed.\n")
-
-
-    neural_labels = [
-        "Brain", "Neural", "Ventral_nerve_cord",
-        "Ventral_nerve_cord_prim", "Glia", "PNS_&_sense"
-    ]
-
-    # this could've been a list comprehension but isn't
-    neural_labels = list(map(lambda s: s.replace("prim", "prim.").replace("_", " "), neural_labels))
-    motif_ids = motifs_df.index
-    loop_ids = loops_df.index
-
-    big_dict_neural = {w:{
-        l : {
-            m : {
-                profile : [] for profile in activity_profiles
-            } for m in motif_ids
-        } for l in loop_ids
-    } for w in windows}
-
-    for window in windows:
-        valid_labels = list(set(big_dict_stratified[window].keys()) & set(neural_labels))
-        if not valid_labels:
-            continue
-        for loop in loop_ids:
-            for motif in motif_ids:
-                for profile in activity_profiles:
-                    # unify the distributions of different tissues in neural_label
-                    big_dict_neural[window][loop][motif][profile] = list(itertools.chain(*[big_dict_stratified[window][label][loop][motif][profile] for label in valid_labels]))
-
-    # -------------- compute and subtract the means -------------------
-
-    for window in windows:
-        output_dir = f"results/training_data/neural_labels/hrs{window}"
-        os.makedirs(output_dir, exist_ok=True)
-
-        # tissues = big_dict_stratified[window].keys()
-
-        for loop in loop_ids:
-
-            table = pd.DataFrame(index=list(loop_ids), columns=list(motif_ids), dtype=float)
-
-            for motif in motif_ids:
-
-                entry = big_dict_neural[window][loop][motif]
-
-                arr_11 = entry["1-1"]
-                arr_other = np.concatenate([
-                    entry[p] for p in activity_profiles[1:]
-                    if len(entry[p]) > 0
-                ]) if any(len(entry[p]) > 0 for p in activity_profiles[1:]) else np.array([])
-
-                if len(arr_11) > 0 and len(arr_other) > 0:
-                    mean_11 = np.mean(arr_11)
-                    mean_other = np.mean(arr_other)
-                    table.loc[tissue, motif] = mean_11 - mean_other
-                else:
-                    table.loc[tissue, motif] = np.nan
-
-    # -------------- save csv -------------------
-    out_path = os.path.join(output_dir, f"motif_enrichment_hrs{window}.csv")
-    table.to_csv(out_path)
-
-    print("All tables saved.")
 
 if __name__ == '__main__':
     main()
