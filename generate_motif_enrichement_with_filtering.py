@@ -12,6 +12,7 @@
 #   5. Parallel window processing via ProcessPoolExecutor.
 
 import os
+import argparse
 import numpy as np
 import pandas as pd
 import pyreadr
@@ -31,7 +32,7 @@ NEURAL_LABELS_RAW = [
 NEURAL_LABELS = list(map(lambda s: s.replace("prim", "prim.").replace("_", " "), NEURAL_LABELS_RAW))
 
 
-def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame) -> None:
+def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_labels = False) -> None:
     """
     For a single time window:
       - load data split by tissue
@@ -94,18 +95,12 @@ def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame) -> None:
     enrichment_matrix = mean_11 - mean_other  # (n_loops, n_motifs)
 
     # Save one CSV per loop (matching original output format)
-    output_dir = f"results/training_data/neural_labels/hrs{window}"
+    if filter_labels:
+        output_dir = f"results/training_data/neural_labels/hrs{window}"
+    else:
+        output_dir = f"results/training_data/unfiltered/hrs{window}"
+    
     os.makedirs(output_dir, exist_ok=True)
-
-    for i, loop in enumerate(loop_ids):
-        table = pd.DataFrame(
-            enrichment_matrix[i:i+1],   # shape (1, n_motifs)
-            index=[loop],
-            columns=motif_ids,
-            dtype=float
-        )
-        out_path = os.path.join(output_dir, f"motif_enrichment_hrs{window}_loop{loop}.csv")
-        table.to_csv(out_path)
 
     # Also save the full matrix for convenience
     full_table = pd.DataFrame(enrichment_matrix, index=loop_ids, columns=motif_ids, dtype=float)
@@ -116,6 +111,11 @@ def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame) -> None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Perform a small literature search.")
+    parser.add_argument("--filter_labels", required=True, help="Boolean parameter for deciding whether cell should be filtered based on neural_labels")
+
+    args = parser.parse_args()
+
     print_timestamp("Reading metadata (tissue annotations)...")
     atac_meta = pyreadr.read_r('data/atac_meta.rds')
     anot_df = list(atac_meta.values())[0]
@@ -124,7 +124,7 @@ def main():
     # If RAM is tight, reduce max_workers or process sequentially.
     with ProcessPoolExecutor(max_workers=len(WINDOWS)) as executor:
         futures = {
-            executor.submit(compute_enrichment_for_window, w, anot_df): w
+            executor.submit(compute_enrichment_for_window, w, anot_df, args.filter_labels): w
             for w in WINDOWS
         }
         for fut in as_completed(futures):
