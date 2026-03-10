@@ -21,7 +21,7 @@ WINDOWS = ['06-08', '10-12', '14-16']
 def compute_difference_for_window(window: str) -> None:
     neural_dir      = f"results/training_data/neural_labels/hrs{window}"
     unfiltered_dir  = f"results/training_data/unfiltered/hrs{window}"
-    output_dir      = f"results/EDA/enrichement_difference"
+    output_dir      = f"results/EDA/enrichment_difference"
     os.makedirs(output_dir, exist_ok=True)
 
     # --- load enrichment tables ---
