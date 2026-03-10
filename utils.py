@@ -93,10 +93,14 @@ def load_window(window: str):
     motifs_df = motifs_df[common]
     
     return loops_df, motifs_df
-
-def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFrame, motifs_df: pd.DataFrame) -> dict[dict]:
+def distributions(
+    loop_ids: list[str],
+    motif_ids: list[str],
+    loops_df: pd.DataFrame,
+    motifs_df: pd.DataFrame,
+) -> dict:
     """
-    Returns whole z-score distributions for all activity profiles (lists of values)
+    Returns the entire z-score distributions for all activity profiles (lists of values)
     Args:
         loop_ids (list[str]): Loop indentifiers (like 'L417')
         motif_ids (list[str]): motif indentifiers (like 'M0111-1.02')
@@ -105,24 +109,38 @@ def distributions(loop_ids: list[str], motif_ids: list[str], loops_df: pd.DataFr
     Returns:
         result (dict): a dictionary with 
     """
-    result = {loop: {motif: {"1-1": [], "1-0": [], "0-1": [], "0-0": []} for motif in motif_ids} for loop in loop_ids}
-    for loop_id in loop_ids:
-        loop_values = loops_df.loc[loop_id]
-        cells_11 = loop_values[loop_values == 11].index
-        cells_10 = loop_values[loop_values == 10].index
-        cells_01 = loop_values[loop_values == 1].index
-        cells_00 = loop_values[loop_values == 0].index
 
-        for motif_id in motif_ids:
-            motif_values = motifs_df.loc[motif_id]
+    # Pre-extract numpy matrices once
+    loops_mat = loops_df.loc[loop_ids].to_numpy()
+    motifs_mat = motifs_df.loc[motif_ids].to_numpy()
 
-            result[loop_id][motif_id]["1-1"] = motif_values.loc[cells_11] if len(cells_11) > 0 else np.nan
-            result[loop_id][motif_id]["1-0"] = motif_values.loc[cells_10] if len(cells_10) > 0 else np.nan
-            result[loop_id][motif_id]["0-1"] = motif_values.loc[cells_01] if len(cells_01) > 0 else np.nan
-            result[loop_id][motif_id]["0-0"] = motif_values.loc[cells_00] if len(cells_00) > 0 else np.nan
-            
+    result = {}
+
+    for i, loop_id in enumerate(loop_ids):
+
+        loop_values = loops_mat[i]   # 1D array (cells)
+
+        # Precompute masks ONCE
+        mask_11 = loop_values == 11
+        mask_10 = loop_values == 10
+        mask_01 = loop_values == 1
+        mask_00 = loop_values == 0
+
+        result[loop_id] = {}
+
+        for j, motif_id in enumerate(motif_ids):
+
+            motif_values = motifs_mat[j]  # 1D array (cells)
+
+            result[loop_id][motif_id] = {
+                "1-1": motif_values[mask_11] if mask_11.any() else np.array([]),
+                "1-0": motif_values[mask_10] if mask_10.any() else np.array([]),
+                "0-1": motif_values[mask_01] if mask_01.any() else np.array([]),
+                "0-0": motif_values[mask_00] if mask_00.any() else np.array([]),
+            }
+
     return result
-
+        
 
 def load_window_split_by_tissue(window: str, metadata_df: pd.DataFrame):
     """
