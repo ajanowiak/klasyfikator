@@ -33,7 +33,7 @@ def compute_difference_for_window(window: str) -> None:
     unfiltered_df = pd.read_csv(unfiltered_path, index_col=0)
 
     # --- load count_11 (take from neural; value is loop-level so either file works) ---
-    count_path = os.path.join(neural_dir, f"motif_count11_hrs{window}.csv")
+    count_path = os.path.join(neural_dir, f"count11_hrs{window}.csv")
     print_timestamp(f"Window {window}: loading count_11 table...")
     count_df = pd.read_csv(count_path, index_col=0)
     # All motif columns hold the same value per row — take the first column
