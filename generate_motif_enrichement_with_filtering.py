@@ -122,8 +122,13 @@ def compute_enrichment_for_window(window: str, anot_df: pd.DataFrame, filter_lab
 
 def main():
     parser = argparse.ArgumentParser(description="Perform a small literature search.")
-    parser.add_argument("--filter_labels", required=True, help="Boolean parameter for deciding whether cell should be filtered based on neural_labels")
-
+    parser.add_argument(
+        "--filter_labels",
+        type=lambda x: x.lower() == "true",
+        required=True,
+        help="Whether to filter based on neural labels (True/False)"
+    )
+    
     args = parser.parse_args()
 
     print_timestamp("Reading metadata (tissue annotations)...")
